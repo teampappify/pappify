@@ -1,0 +1,58 @@
+{
+  "name": "pappify",
+  "version": "1.0.0",
+  "description": "Next-gen Lavalink client with ultra-low latency, smart node balancing, and 25+ audio effects",
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
+  "type": "commonjs",
+  "files": [
+    "build",
+    "README.md",
+    "DOCUMENTATION.md"
+  ],
+  "scripts": {
+    "lint": "eslint build",
+    "test": "node --test"
+  },
+  "keywords": [
+    "lavalink",
+    "music",
+    "discord",
+    "discord.js",
+    "eris",
+    "oceanic",
+    "audio",
+    "streaming",
+    "nodelink",
+    "pappify",
+    "voice",
+    "tts",
+    "filters",
+    "effects"
+  ],
+  "author": "Pappu100",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/teampappify/pappify"
+  },
+  "bugs": {
+    "url": "https://github.com/teampappify/pappify/issues"
+  },
+  "homepage": "https://github.com/teampappify/pappify#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "undici": ">=6.11.1",
+    "ws": "^8.16.0"
+  },
+  "peerDependencies": {
+    "discord.js": ">=14.0.0"
+  },
+  "peerDependenciesMeta": {
+    "discord.js": {
+      "optional": true
+    }
+  }
+}
