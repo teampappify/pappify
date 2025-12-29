@@ -493,13 +493,27 @@ console.log(result.url); // URL to download recording
 
 #### 9. Spotify (`spotify`)
 
-Resolve Spotify URLs to playable tracks.
+Resolve Spotify URLs to playable tracks with smart matching algorithm.
 
 **How it works:**
 - Extracts track/album/playlist info from Spotify API
-- Searches for equivalent tracks on YouTube/other sources
+- Creates "unresolved" tracks that are resolved at play time
+- Uses smart matching algorithm to find the exact YouTube equivalent
 - Supports tracks, albums, playlists, and artist top tracks
 - Requires Spotify API credentials for full functionality
+
+**Smart Resolution Algorithm (in order of priority):**
+
+1. **Official Audio Match** - Finds tracks from artist's channel or "Artist - Topic" channels
+2. **Duration Match** - Finds tracks within ±2 seconds of Spotify duration
+3. **Duration + Title Match** - Combines duration and title matching
+4. **Filter Unwanted** - Removes covers, remixes, karaoke, instrumental, slowed, reverb, sped up, 8d audio versions
+5. **Fallback** - Uses first result if nothing else matches
+
+**Search Query Format:**
+- Uses `ytsearch:Artist - Title` format (more accurate than `ytmsearch`)
+- Handles multiple artists by checking first artist name
+- Filters out unwanted keywords from results
 
 **Supported URL types:**
 - `https://open.spotify.com/track/...` - Single track
@@ -528,6 +542,10 @@ const pappify = new Pappify(client, nodes, {
 const result = await pappify.resolve({
   query: 'https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT',
 });
+
+// Track contains original Spotify data
+console.log(result.tracks[0].info.spotifyData);
+// { title, author, duration, identifier, uri, thumbnail, isrc }
 ```
 
 **Standalone Spotify class:**
@@ -549,8 +567,19 @@ const track = await spotify.getTrack(id);
 const album = await spotify.getAlbum(id);
 const playlist = await spotify.getPlaylist(id);
 
-// Resolve to playable tracks
+// Resolve to playable tracks (creates unresolved tracks)
 const result = await spotify.resolve(url, requester);
+```
+
+**Unresolved Track Resolution:**
+
+When a Spotify track is added to the queue, it's stored as an "unresolved" track. When `player.play()` is called, the track is automatically resolved to a YouTube track using the smart matching algorithm:
+
+```javascript
+// This happens automatically in player.play()
+if (!track.track) {
+  track = await track.resolve(pappify);
+}
 ```
 
 **When disabled:** Spotify URLs won't auto-resolve, SpotifyPlugin won't load tracks
@@ -1614,47 +1643,6 @@ await pappify.resolve({ query: 'scsearch:electronic music' });
 await pappify.resolve({ query: 'https://youtube.com/watch?v=...' });
 await pappify.resolve({ query: 'https://open.spotify.com/track/...' });
 await pappify.resolve({ query: 'https://soundcloud.com/...' });
-```
-
----
-
-## Project Structure
-
-```
-pappify/
-├── build/
-│   ├── core/           # Main client & plugin base
-│   │   ├── Pappify.js
-│   │   └── Plugin.js
-│   ├── network/        # Node, REST, Lavalink features
-│   │   ├── Node.js
-│   │   ├── Rest.js
-│   │   ├── Lyrics.js
-│   │   ├── Mixer.js
-│   │   └── VoiceRecorder.js
-│   ├── player/         # Player, queue, tracks
-│   │   ├── Player.js
-│   │   ├── Queue.js
-│   │   ├── Track.js
-│   │   ├── Connection.js
-│   │   ├── PlayerState.js
-│   │   └── Spotify.js
-│   ├── audio/          # Filters, effects, voice, TTS
-│   │   ├── Filters.js
-│   │   ├── Effects.js
-│   │   ├── Voice.js
-│   │   └── TTS.js
-│   ├── plugins/        # Built-in plugins
-│   │   ├── SpotifyPlugin.js
-│   │   ├── SaveStatePlugin.js
-│   │   └── AutoDisconnectPlugin.js
-│   ├── index.js
-│   └── index.d.ts
-├── examples/
-│   └── basic-bot.js
-├── package.json
-├── README.md
-└── DOCUMENTATION.md
 ```
 
 ---

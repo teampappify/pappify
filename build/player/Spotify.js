@@ -1,5 +1,8 @@
 const { fetch } = require('undici');
 
+// Helper to escape regex special characters
+const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 /**
  * Spotify integration for resolving Spotify URLs
  * Works without Lavalink Spotify plugin
@@ -201,7 +204,159 @@ class Spotify {
   }
 
   /**
+   * Track will be resolved when played using smart matching
+   * @param {Object} spotifyTrack - Spotify track data
+   * @param {*} requester
+   * @returns {Object}
+   * @private
+   */
+  _buildUnresolvedTrack(spotifyTrack, requester) {
+    const pappify = this.pappify;
+    const node = pappify.leastUsedNodes?.[0] || pappify.bestNode;
+    
+    // Create track object with empty encoded string (unresolved)
+    const track = {
+      track: "", // Empty = unresolved, will be resolved at play time
+      encoded: "",
+      info: {
+        identifier: spotifyTrack.identifier,
+        isSeekable: true,
+        author: spotifyTrack.author || "Unknown",
+        length: spotifyTrack.duration,
+        isStream: false,
+        sourceName: "spotify",
+        title: spotifyTrack.title,
+        uri: spotifyTrack.uri,
+        thumbnail: spotifyTrack.thumbnail,
+        artworkUrl: spotifyTrack.thumbnail,
+        position: 0,
+        requester,
+        // Store original Spotify data for resolution
+        spotifyData: spotifyTrack,
+      },
+      pluginInfo: {},
+      
+      /**
+       * Resolve this unresolved track to a playable YouTube track
+       * @param {Object} pappify - Pappify instance
+       * @returns {Promise<Object>}
+       */
+      resolve: async function(pappifyInstance) {
+        const pappifyRef = pappifyInstance || pappify;
+        const spotifyInfo = this.info.spotifyData || this.info;
+        
+        // Build search query: "author - title" format (better than "title author")
+        const query = [spotifyInfo.author, spotifyInfo.title]
+          .filter(x => !!x)
+          .join(" - ");
+        
+        // Use ytsearch (regular YouTube) instead of ytmsearch (YouTube Music)
+        // ytsearch gives more accurate results for finding exact songs
+        const result = await pappifyRef.resolve({ 
+          query: `ytsearch:${query}`,
+          requester: this.info.requester 
+        });
+
+        if (!result || !result.tracks || !result.tracks.length) {
+          return this;
+        }
+
+        // Strategy 1: Find official audio (author match or "Author - Topic" channel)
+        const officialAudio = result.tracks.find((candidate) => {
+          const authorVariants = [
+            spotifyInfo.author,
+            `${spotifyInfo.author} - Topic`,
+            // Handle multiple artists - check first artist
+            spotifyInfo.author.split(',')[0].trim(),
+            `${spotifyInfo.author.split(',')[0].trim()} - Topic`
+          ];
+          
+          // Check if author matches
+          const authorMatch = authorVariants.some((name) => 
+            new RegExp(`^${escapeRegExp(name)}$`, "i").test(candidate.info.author)
+          );
+          
+          // Check if title matches exactly
+          const titleMatch = new RegExp(`^${escapeRegExp(spotifyInfo.title)}$`, "i")
+            .test(candidate.info.title);
+          
+          return authorMatch || titleMatch;
+        });
+
+        if (officialAudio) {
+          this.info.identifier = officialAudio.info.identifier;
+          this.track = officialAudio.track || officialAudio.encoded;
+          this.encoded = this.track;
+          return this;
+        }
+
+        // Strategy 2: Find track with matching duration (±2 seconds tolerance)
+        if (spotifyInfo.duration) {
+          const sameDuration = result.tracks.find((candidate) => {
+            const candidateLength = candidate.info.length || candidate.info.duration || 0;
+            const targetLength = spotifyInfo.duration || 0;
+            return candidateLength >= targetLength - 2000 && 
+                   candidateLength <= targetLength + 2000;
+          });
+
+          if (sameDuration) {
+            this.info.identifier = sameDuration.info.identifier;
+            this.track = sameDuration.track || sameDuration.encoded;
+            this.encoded = this.track;
+            return this;
+          }
+
+          // Strategy 3: Find track with matching duration AND title contains spotify title
+          const sameDurationAndTitle = result.tracks.find((candidate) => {
+            const candidateLength = candidate.info.length || candidate.info.duration || 0;
+            const targetLength = spotifyInfo.duration || 0;
+            const durationMatch = candidateLength >= targetLength - 2000 && 
+                                  candidateLength <= targetLength + 2000;
+            const titleMatch = candidate.info.title.toLowerCase()
+              .includes(spotifyInfo.title.toLowerCase());
+            return durationMatch && titleMatch;
+          });
+
+          if (sameDurationAndTitle) {
+            this.info.identifier = sameDurationAndTitle.info.identifier;
+            this.track = sameDurationAndTitle.track || sameDurationAndTitle.encoded;
+            this.encoded = this.track;
+            return this;
+          }
+        }
+
+        // Strategy 4: Filter out covers/remixes/karaoke and pick best
+        const validCandidates = result.tracks.filter((candidate) => {
+          const ytTitle = candidate.info.title.toLowerCase();
+          const spTitle = spotifyInfo.title.toLowerCase();
+          
+          // Skip if YouTube has unwanted keywords that Spotify doesn't have
+          const unwantedKeywords = ['cover', 'remix', 'karaoke', 'instrumental', 'live version', 'acoustic version', 'slowed', 'reverb', 'sped up', '8d audio'];
+          for (const keyword of unwantedKeywords) {
+            if (ytTitle.includes(keyword) && !spTitle.includes(keyword)) {
+              return false;
+            }
+          }
+          return true;
+        });
+
+        // Use first valid candidate, or fallback to first result
+        const bestCandidate = validCandidates[0] || result.tracks[0];
+        
+        this.info.identifier = bestCandidate.info.identifier;
+        this.track = bestCandidate.track || bestCandidate.encoded;
+        this.encoded = this.track;
+        
+        return this;
+      }
+    };
+
+    return track;
+  }
+
+  /**
    * Resolve Spotify URL to playable tracks
+   * Creates unresolved tracks that will be resolved at play time
    * @param {string} url
    * @param {*} requester
    * @returns {Promise<Object>}
@@ -230,27 +385,15 @@ class Spotify {
         break;
     }
 
-    // Convert to Pappify tracks by searching
-    const resolvedTracks = [];
-    for (const track of result.tracks) {
-      const query = `${track.title} ${track.author}`;
-      const searchResult = await this.pappify.resolve({
-        query,
-        source: 'ytmsearch',
-        requester,
-      });
-
-      if (searchResult.tracks.length) {
-        const resolved = searchResult.tracks[0];
-        resolved.info.spotifyData = track;
-        resolvedTracks.push(resolved);
-      }
-    }
+    // Build unresolved tracks (will be resolved at play time)
+    const unresolvedTracks = result.tracks.map(track => 
+      this._buildUnresolvedTrack(track, requester)
+    );
 
     return {
       loadType: type === 'track' ? 'track' : 'playlist',
       playlistInfo: result.name ? { name: result.name } : null,
-      tracks: resolvedTracks,
+      tracks: unresolvedTracks,
     };
   }
 }

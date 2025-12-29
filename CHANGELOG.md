@@ -7,7 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.0.0-beta] - 2024-12-21
+## [1.0.1-beta] - 2025-12-29
+
+### 🔧 Fixed
+
+- **Spotify Track Resolution** - Fixed incorrect YouTube track matching when playing Spotify URLs
+
+### ✨ Changed
+
+#### `build/player/Spotify.js`
+
+| Function | Change |
+|----------|--------|
+| `resolve(url, requester)` | Now creates unresolved tracks instead of immediately resolving |
+| `_buildUnresolvedTrack()` | **NEW** - Creates unresolved track with inline `resolve()` method |
+| `track.resolve(pappify)` | **NEW** - Smart resolution algorithm with 5-step matching |
+
+#### Smart Resolution Algorithm (Priority Order)
+
+1. **Official Audio Match** - Finds tracks from artist's channel or "Artist - Topic" channels
+2. **Duration Match** - Finds tracks within ±2 seconds of Spotify duration
+3. **Duration + Title Match** - Combines duration and title matching
+4. **Filter Unwanted** - Removes covers, remixes, karaoke, instrumental, slowed, reverb, sped up, 8d audio
+5. **Fallback** - Uses first result if nothing else matches
+
+#### Search Query Format
+
+| Before | After |
+|--------|-------|
+| `ytmsearch:Title Author` | `ytsearch:Author - Title` |
+
+- Changed from YouTube Music (`ytmsearch`) to regular YouTube (`ytsearch`)
+- Changed query format from `{title} {author}` to `{author} - {title}`
+
+---
+
+## [1.0.0-beta] - 2025-12-21
 
 ### 🎉 Initial Beta Release
 

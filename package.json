@@ -1,6 +1,6 @@
 {
   "name": "pappify",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Next-gen Lavalink client with ultra-low latency, smart node balancing, and 25+ audio effects",
   "main": "build/index.js",
   "types": "build/index.d.ts",
